@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { createGLTFLoader } from '../core/gltfLoader.js'
 import { CONFIG } from '../config.js'
 
 // ─────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ function bakeVertexColors(geometry, foliageColor, trunkColor) {
  * @param {(pct:number)=>void} [onProgress]
  */
 export function loadTreeTemplate(url, options = {}, onProgress) {
-  const loader = new GLTFLoader()
+  const loader = createGLTFLoader()
   const height = options.height ?? CONFIG.forest.treeModelHeight
   const baseMat = CONFIG.forest.plantMaterial ?? {}
   const materialCfg = { ...baseMat, ...options.material }
@@ -153,6 +153,26 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
             geometry.boundingBox.max.x - geometry.boundingBox.min.x,
             geometry.boundingBox.max.z - geometry.boundingBox.min.z,
           ) * 0.5
+
+        if (materialCfg.preserveOriginal) {
+          const srcMat = Array.isArray(src.material) ? src.material[0] : src.material
+          const material = srcMat?.clone?.() ?? new THREE.MeshStandardMaterial({ color: 0xffffff })
+          material.roughness = materialCfg.roughness ?? material.roughness ?? 0.9
+          material.metalness = 0
+
+          resolve({
+            geometry,
+            material,
+            height,
+            radius,
+            id: options.id ?? url,
+            trunkPalette,
+            trunkColor,
+            foliagePalette: null,
+            randomFoliage: false,
+          })
+          return
+        }
 
         const trunkRatio = materialCfg.trunkRatio ?? 0.1
         const trunkRadiusRatio = materialCfg.trunkRadiusRatio ?? 0.052
@@ -191,6 +211,15 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
               '#include <begin_vertex>',
               '#include <begin_vertex>\n  vPlantPart = aPlantPart;',
             )
+            .replace(
+              '#include <color_vertex>',
+              `#include <color_vertex>
+#if defined USE_INSTANCING_COLOR && defined USE_COLOR
+  if (aPlantPart < 0.5) {
+    vColor.rgb = color.rgb;
+  }
+#endif`,
+            )
 
           shader.fragmentShader = shader.fragmentShader
             .replace(
@@ -201,11 +230,11 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
               '#include <emissivemap_fragment>',
               `#include <emissivemap_fragment>
   float trunkW = 1.0 - vPlantPart;
-  totalEmissiveRadiance += diffuseColor.rgb * trunkW * 0.92;`,
+  totalEmissiveRadiance += diffuseColor.rgb * trunkW * 0.14;`,
             )
         }
         material.customProgramCacheKey = () =>
-          `plant-v9-${splitMode}-${materialCfg.foliage}-${trunkColor.getHexString()}-${randomFoliage ? 'rand' : 'fix'}`
+          `plant-v9-trunk-${splitMode}-${materialCfg.foliage}-${trunkColor.getHexString()}-${randomFoliage ? 'rand' : 'fix'}`
 
         resolve({
           geometry,

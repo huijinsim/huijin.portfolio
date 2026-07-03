@@ -218,6 +218,17 @@ export class Forest {
     return true
   }
 
+  _canPlaceGroundProp(x, z, radius, pad, extraSlots = []) {
+    const slots = [...this.treeSlots, ...(this.bushSlots ?? []), ...extraSlots]
+    for (const slot of slots) {
+      const dx = x - slot.x
+      const dz = z - slot.z
+      const minD = (radius + slot.r) * pad
+      if (dx * dx + dz * dz < minD * minD) return false
+    }
+    return true
+  }
+
   _registerTree(x, z, radius) {
     this.treeSlots.push({ x, z, r: radius })
   }
@@ -352,18 +363,32 @@ export class Forest {
 
     const rng = this.rng
     const placements = []
+    this.bushSlots = []
+    const pad = cfg.spacing ?? 1.35
+    const radiusScale = cfg.radiusScale ?? 0.85
 
     for (let i = 0; i < cfg.count; i++) {
-      const spot = this._pickGroundSpot(rng, 0.9)
-      if (!spot) continue
-      const [x, z] = spot
-      placements.push({
-        x,
-        z,
-        scale: cfg.minScale + rng() * (cfg.maxScale - cfg.minScale),
-        rotY: rng() * Math.PI * 2,
-        y: this._groundY(x, z, cfg.groundSink ?? -0.04),
-      })
+      let placed = false
+      for (let attempt = 0; attempt < 28; attempt++) {
+        const spot = this._pickGroundSpot(rng, 0.9)
+        if (!spot) break
+        const [x, z] = spot
+        const scale = cfg.minScale + rng() * (cfg.maxScale - cfg.minScale)
+        const r = this.bushTemplate.radius * scale * radiusScale
+        if (!this._canPlaceGroundProp(x, z, r, pad)) continue
+
+        placements.push({
+          x,
+          z,
+          scale,
+          rotY: rng() * Math.PI * 2,
+          y: this._groundY(x, z, cfg.groundSink ?? -0.04),
+        })
+        this.bushSlots.push({ x, z, r })
+        placed = true
+        break
+      }
+      if (!placed) continue
     }
 
     if (!placements.length) return
@@ -377,14 +402,72 @@ export class Forest {
     if (!this.flowerLayers?.length) return
 
     const rng = this.rng
+    let li = 0
 
-    for (const layer of this.flowerLayers) {
+    while (li < this.flowerLayers.length) {
+      const layer = this.flowerLayers[li]
       const cfg = layer.config
-      if (!layer.template || !cfg.count) continue
+      const altLayer = cfg.alternate ? this.flowerLayers[li + 1] : null
+
+      if (altLayer?.template && layer.template) {
+        const placementsA = []
+        const placementsB = []
+        const flowerSlots = []
+        const pathPad = cfg.pathPad ?? 1.1
+
+        for (let i = 0; i < (cfg.count ?? 0); i++) {
+          let placed = false
+          for (let attempt = 0; attempt < 22; attempt++) {
+            const spot = this._pickGroundSpot(rng, pathPad)
+            if (!spot) break
+            const [x, z] = spot
+            const scale = cfg.minScale + rng() * (cfg.maxScale - cfg.minScale)
+            const useA = (placementsA.length + placementsB.length) % 2 === 0
+            const template = useA ? layer.template : altLayer.template
+            const r = template.radius * scale * (cfg.radiusScale ?? 0.52)
+            if (!this._canPlaceGroundProp(x, z, r, cfg.spacing ?? 1.18, flowerSlots)) continue
+
+            const placement = {
+              x,
+              z,
+              scale,
+              rotY: rng() * Math.PI * 2,
+              y: this._groundY(x, z, cfg.groundSink ?? -0.02),
+            }
+            if (useA) placementsA.push(placement)
+            else placementsB.push(placement)
+            flowerSlots.push({ x, z, r })
+            placed = true
+            break
+          }
+          if (!placed) continue
+        }
+
+        for (const [alt, placements] of [
+          [layer, placementsA],
+          [altLayer, placementsB],
+        ]) {
+          if (!placements.length) continue
+          const mesh = createTreeInstances(alt.template, placements)
+          mesh.userData.interactive = null
+          mesh.userData.isInstancedTrees = false
+          this._track(mesh.material)
+          this.scene.add(mesh)
+        }
+
+        li += 2
+        continue
+      }
+
+      if (!layer.template || !cfg.count) {
+        li++
+        continue
+      }
 
       const placements = []
+      const pathPad = cfg.pathPad ?? 1.1
       for (let i = 0; i < cfg.count; i++) {
-        const spot = this._pickGroundSpot(rng, 1.1)
+        const spot = this._pickGroundSpot(rng, pathPad)
         if (!spot) continue
         const [x, z] = spot
         placements.push({
@@ -396,13 +479,15 @@ export class Forest {
         })
       }
 
-      if (!placements.length) continue
+      if (placements.length) {
+        const mesh = createTreeInstances(layer.template, placements)
+        mesh.userData.interactive = null
+        mesh.userData.isInstancedTrees = false
+        this._track(mesh.material)
+        this.scene.add(mesh)
+      }
 
-      const mesh = createTreeInstances(layer.template, placements)
-      mesh.userData.interactive = null
-      mesh.userData.isInstancedTrees = false
-      this._track(mesh.material)
-      this.scene.add(mesh)
+      li++
     }
   }
 
