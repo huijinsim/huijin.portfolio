@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Works — Sim Huijin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+  <!-- 오프라인 폴백: Google Fonts 미로드 시 시스템 폰트 사용 -->
+  <style>
+    :root {
+      --black: #0d0d0d;
+      --white: #f5f3ee;
+      --gray:  #8a8a8a;
+      --line:  #d8d4cc;
+      --accent:#c96a8a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--white);
+      color: var(--black);
+      font-family: 'Noto Sans KR', sans-serif;
+      font-weight: 300;
+      cursor: none;
+      overflow-x: hidden;
+    }
+
+    /* ── 커스텀 커서 ── */
+    #cursor {
+      position: fixed;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--black);
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: transform 0.1s, width 0.3s cubic-bezier(0.16,1,0.3,1),
+                  height 0.3s cubic-bezier(0.16,1,0.3,1);
+      mix-blend-mode: difference;
+    }
+    #cursor.expand {
+      width: 56px; height: 56px;
+    }
+
+    /* ── 네비 ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 48px;
+    }
+
+    .nav-logo {
+      font-family: 'EB Garamond', serif;
+      font-size: 1.05rem;
+      letter-spacing: 0.04em;
+      color: var(--black);
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 36px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gray);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover,
+    .nav-links a.active { color: var(--black); }
+
+    /* ── 히어로 ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 0 48px 64px;
+      border-bottom: 1px solid var(--line);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 배경 대형 텍스트 */
+    .hero-bg-text {
+      position: absolute;
+      top: 50%;
+      left: 48px;
+      transform: translateY(-50%);
+      font-family: 'EB Garamond', serif;
+      font-size: clamp(140px, 22vw, 260px);
+      font-weight: 400;
+      color: transparent;
+      -webkit-text-stroke: 1px var(--line);
+      line-height: 1;
+      user-select: none;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .hero-kicker {
+      font-size: 0.7rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gray);
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-title {
+      font-family: 'EB Garamond', serif;
+      font-size: clamp(52px, 9vw, 120px);
+      font-weight: 400;
+      line-height: 0.92;
+      letter-spacing: -0.02em;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-title em {
+      font-style: italic;
+      color: var(--gray);
+    }
+
+    .hero-bottom {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-top: 48px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-count {
+      font-size: 0.82rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gray);
+    }
+
+    /* ── 작업 목록 ── */
+    .works-section {
+      padding: 0 48px;
+    }
+
+    .works-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 56px 0 0;
+      margin-bottom: 0;
+    }
+
+    .works-label {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+    }
+
+    .section-num {
+      font-family: 'EB Garamond', serif;
+      font-size: 0.85rem;
+      color: var(--gray);
+      letter-spacing: 0.1em;
+    }
+
+    .section-title {
+      font-family: 'EB Garamond', serif;
+      font-size: clamp(28px, 4vw, 48px);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+    }
+
+    /* 필터 */
+    .filter-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .filter-btn {
+      font-size: 0.65rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      color: var(--gray);
+      cursor: none;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover,
+    .filter-btn.active {
+      background: var(--black);
+      border-color: var(--black);
+      color: var(--white);
+    }
+
+    /* ── 작업 행 목록 ── */
+    .works-list {
+      margin-top: 48px;
+      border-top: 1px solid var(--line);
+    }
+
+    .work-row {
+      display: grid;
+      grid-template-columns: 72px 1fr 160px 140px;
+      align-items: center;
+      gap: 32px;
+      padding: 28px 0;
+      border-bottom: 1px solid var(--line);
+      text-decoration: none;
+      color: inherit;
+      position: relative;
+      transition: padding-left 0.35s cubic-bezier(0.16,1,0.3,1);
+      overflow: hidden;
+    }
+    .work-row:hover { padding-left: 20px; }
+
+    /* 호버 시 왼쪽 라인 */
+    .work-row::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 2px;
+      background: var(--black);
+      transform: scaleY(0);
+      transform-origin: top;
+      transition: transform 0.35s cubic-bezier(0.16,1,0.3,1);
+    }
+    .work-row:hover::before { transform: scaleY(1); }
+
+    .work-num {
+      font-family: 'EB Garamond', serif;
+      font-size: 0.82rem;
+      color: var(--gray);
+      letter-spacing: 0.08em;
+    }
+
+    .work-info {}
+
+    .work-title {
+      font-family: 'EB Garamond', serif;
+      font-size: clamp(1.1rem, 2vw, 1.45rem);
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      margin-bottom: 4px;
+      transition: letter-spacing 0.3s;
+    }
+    .work-row:hover .work-title { letter-spacing: 0.01em; }
+
+    .work-subtitle {
+      font-size: 0.72rem;
+      color: var(--gray);
+      letter-spacing: 0.06em;
+    }
+
+    .work-tag {
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gray);
+      border: 1px solid var(--line);
+      padding: 5px 12px;
+      display: inline-block;
+      text-align: center;
+    }
+
+    .work-year {
+      font-family: 'EB Garamond', serif;
+      font-size: 0.88rem;
+      color: var(--gray);
+      text-align: right;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── 호버 프리뷰 이미지 ── */
+    #work-preview {
+      position: fixed;
+      width: 320px;
+      aspect-ratio: 16/10;
+      pointer-events: none;
+      z-index: 200;
+      opacity: 0;
+      transform: scale(0.94) rotate(-1deg);
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16,1,0.3,1);
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    #work-preview.show {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
+
+    .preview-inner {
+      width: 100%; height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+    }
+
+    /* ── 강조 작업 ── */
+    .featured-section {
+      padding: 96px 48px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+
+    .featured-label {
+      font-size: 0.68rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--gray);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .featured-label::before {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 1px;
+      background: var(--gray);
+    }
+
+    .featured-title {
+      font-family: 'EB Garamond', serif;
+      font-size: clamp(36px, 5vw, 64px);
+      font-weight: 400;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+    }
+
+    .featured-desc {
+      font-size: 0.88rem;
+      line-height: 1.85;
+      color: #555;
+      max-width: 400px;
+      margin-bottom: 36px;
+    }
+
+    .featured-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--black);
+      text-decoration: none;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--black);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .featured-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .featured-visual {
+      aspect-ratio: 4/3;
+      background: var(--black);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 노이즈 텍스처 */
+    .featured-visual::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+      mix-blend-mode: overlay;
+      pointer-events: none;
+    }
+
+    /* ── 푸터 ── */
+    footer {
+      padding: 28px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--line);
+    }
+
+    footer span {
+      font-size: 0.68rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--gray);
+    }
+
+    footer a {
+      font-size: 0.68rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--gray);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    footer a:hover { color: var(--black); }
+
+    /* ── reveal ── */
+    [data-reveal] {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.75s cubic-bezier(0.16,1,0.3,1), transform 0.75s cubic-bezier(0.16,1,0.3,1);
+    }
+    [data-reveal].is-visible { opacity: 1; transform: none; }
+
+    /* ── 반응형 ── */
+    @media (max-width: 900px) {
+      nav { padding: 24px 28px; }
+      .hero { padding: 0 28px 48px; }
+      .works-section { padding: 0 28px; }
+      .works-header { flex-direction: column; gap: 20px; }
+      .work-row { grid-template-columns: 48px 1fr; gap: 16px; }
+      .work-tag, .work-year { display: none; }
+      .featured-section { grid-template-columns: 1fr; padding: 72px 28px; gap: 40px; }
+      footer { padding: 24px 28px; }
+      #work-preview { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="cursor"></div>
+  <div id="work-preview">
+    <div class="preview-inner" id="preview-emoji">🌿</div>
+  </div>
+
+  <!-- ── 네비 ── -->
+  <nav>
+    <a href="/" class="nav-logo">Sim Huijin</a>
+    <ul class="nav-links">
+      <li><a href="/">Forest</a></li>
+      <li><a href="/about.html">About</a></li>
+      <li><a href="/works.html" class="active">Works</a></li>
+    </ul>
+  </nav>
+
+  <!-- ── 히어로 ── -->
+  <section class="hero">
+    <span class="hero-bg-text" aria-hidden="true">Works</span>
+    <p class="hero-kicker">Selected Projects</p>
+    <h1 class="hero-title">
+      작업들<br>
+      <em>&amp; Projects</em>
+    </h1>
+    <div class="hero-bottom">
+      <span class="hero-count">총 6개의 프로젝트</span>
+      <span style="font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--gray);display:flex;align-items:center;gap:12px;">
+        <span style="display:block;width:40px;height:1px;background:var(--gray);"></span>
+        Scroll
+      </span>
+    </div>
+  </section>
+
+  <!-- ── 작업 목록 ── -->
+  <div class="works-section">
+    <div class="works-header" data-reveal>
+      <div class="works-label">
+        <span class="section-num">— 01</span>
+        <h2 class="section-title">프로젝트</h2>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active">All</button>
+        <button class="filter-btn">3D</button>
+        <button class="filter-btn">UX</button>
+        <button class="filter-btn">Code</button>
+      </div>
+    </div>
+
+    <div class="works-list">
+
+      <a href="/" class="work-row"
+         data-emoji="🌿" data-bg="#1a2412"
+         data-reveal data-category="3D">
+        <span class="work-num">01</span>
+        <div class="work-info">
+          <p class="work-title">Ethereal Forest</p>
+          <p class="work-subtitle">Three.js · WebGL · GSAP</p>
+        </div>
+        <span class="work-tag">3D / WebGL</span>
+        <span class="work-year">2026</span>
+      </a>
+
+      <a href="#" class="work-row"
+         data-emoji="✨" data-bg="#1a1228"
+         data-reveal data-category="Code">
+        <span class="work-num">02</span>
+        <div class="work-info">
+          <p class="work-title">생성적 입자 시스템</p>
+          <p class="work-subtitle">p5.js · 크리에이티브 코딩</p>
+        </div>
+        <span class="work-tag">Creative Code</span>
+        <span class="work-year">2025</span>
+      </a>
+
+      <a href="#" class="work-row"
+         data-emoji="📱" data-bg="#1e1410"
+         data-reveal data-category="UX">
+        <span class="work-num">03</span>
+        <div class="work-info">
+          <p class="work-title">Plant Nanny 리디자인</p>
+          <p class="work-subtitle">Figma · UX Research · Prototyping</p>
+        </div>
+        <span class="work-tag">UX / UI</span>
+        <span class="work-year">2025</span>
+      </a>
+
+      <a href="#" class="work-row"
+         data-emoji="🌊" data-bg="#0e1820"
+         data-reveal data-category="UX">
+        <span class="work-num">04</span>
+        <div class="work-info">
+          <p class="work-title">VR 감각 인터페이스</p>
+          <p class="work-subtitle">VR · Interaction Design · Research</p>
+        </div>
+        <span class="work-tag">Interaction</span>
+        <span class="work-year">2025</span>
+      </a>
+
+      <a href="#" class="work-row"
+         data-emoji="📊" data-bg="#1a1808"
+         data-reveal data-category="Code">
+        <span class="work-num">05</span>
+        <div class="work-info">
+          <p class="work-title">유사도 데이터 탐색기</p>
+          <p class="work-subtitle">JavaScript · D3.js · Data Viz</p>
+        </div>
+        <span class="work-tag">Data Viz</span>
+        <span class="work-year">2024</span>
+      </a>
+
+      <a href="#" class="work-row"
+         data-emoji="🎨" data-bg="#1c1010"
+         data-reveal data-category="UX">
+        <span class="work-num">06</span>
+        <div class="work-info">
+          <p class="work-title">포트폴리오 사이트</p>
+          <p class="work-subtitle">HTML · CSS · Three.js</p>
+        </div>
+        <span class="work-tag">Web Design</span>
+        <span class="work-year">2024</span>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ── 강조 작업 ── -->
+  <div class="featured-section">
+    <div data-reveal>
+      <p class="featured-label">Featured Work</p>
+      <h2 class="featured-title">Ethereal<br>Forest</h2>
+      <p class="featured-desc">
+        자연과 디지털의 경계를 지우는 인터랙티브 3D 공간.
+        나무를 클릭하면 이야기가 시작되고, 나비를 따라가면 또 다른 세계가 펼쳐집니다.
+      </p>
+      <a href="/" class="featured-btn">
+        직접 체험하기
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </a>
+    </div>
+    <div class="featured-visual" data-reveal>
+      <span style="font-size:5rem;">🌿</span>
+    </div>
+  </div>
+
+  <!-- ── 푸터 ── -->
+  <footer>
+    <span>© 2026 Sim Huijin</span>
+    <div style="display:flex;gap:28px;">
+      <a href="/about.html">About</a>
+      <a href="/">Forest ↗</a>
+    </div>
+  </footer>
+
+  <script>
+    // 커스텀 커서
+    const cursor = document.getElementById('cursor')
+    const preview = document.getElementById('work-preview')
+    const previewEmoji = document.getElementById('preview-emoji')
+
+    let mx = 0, my = 0
+    document.addEventListener('mousemove', e => {
+      mx = e.clientX; my = e.clientY
+      cursor.style.left = mx + 'px'
+      cursor.style.top  = my + 'px'
+      preview.style.left = (mx + 32) + 'px'
+      preview.style.top  = (my - 80) + 'px'
+    })
+
+    document.querySelectorAll('a, button').forEach(el => {
+      el.addEventListener('mouseenter', () => cursor.classList.add('expand'))
+      el.addEventListener('mouseleave', () => cursor.classList.remove('expand'))
+    })
+
+    // 작업 행 호버 → 프리뷰
+    document.querySelectorAll('.work-row').forEach(row => {
+      row.addEventListener('mouseenter', () => {
+        const emoji = row.dataset.emoji || '🌿'
+        const bg    = row.dataset.bg || '#111'
+        previewEmoji.textContent = emoji
+        preview.style.background = bg
+        preview.classList.add('show')
+      })
+      row.addEventListener('mouseleave', () => {
+        preview.classList.remove('show')
+      })
+    })
+
+    // 필터
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        const cat = btn.textContent.trim()
+        document.querySelectorAll('.work-row').forEach(row => {
+          if (cat === 'All' || row.dataset.category === cat) {
+            row.style.display = ''
+          } else {
+            row.style.display = 'none'
+          }
+        })
+      })
+    })
+
+    // 스크롤 reveal
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('is-visible')
+          observer.unobserve(e.target)
+        }
+      })
+    }, { threshold: 0.08 })
+
+    document.querySelectorAll('[data-reveal]').forEach((el, i) => {
+      el.style.transitionDelay = (i % 4) * 0.06 + 's'
+      observer.observe(el)
+    })
+  </script>
+
+</body>
+</html>

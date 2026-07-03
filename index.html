@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ethereal Forest</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+    <!-- 오프라인 폴백: Google Fonts 미로드 시 시스템 폰트 사용 -->
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%;
+        overflow: hidden;
+        background: #c8dcc8;
+        color: #2a3028;
+      }
+
+      #app {
+        position: fixed; inset: 0;
+        width: 100vw; height: 100vh;
+      }
+      #app canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        touch-action: none;
+      }
+
+      #loader {
+        position: fixed; inset: 0; z-index: 60;
+        display: flex; align-items: center; justify-content: center;
+        background: #c8dcc8;
+        font: 0.85rem/1.4 ui-sans-serif, system-ui, sans-serif;
+        color: #3a463a; letter-spacing: 0.2em;
+        transition: opacity 0.8s ease;
+      }
+      #loader.is-hidden { opacity: 0; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="loader"><span class="pct">…</span></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
