@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createGLTFLoader } from '../core/gltfLoader.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { CONFIG } from '../config.js'
 import {
   createHeightFieldSampler,
@@ -260,7 +260,7 @@ export function buildDiorama(rng) {
 /** GLB 지형으로 디오라마 조립 (비동기) */
 export function buildHillDiorama(url, rng, onProgress) {
   const d = CONFIG.diorama
-  const loader = createGLTFLoader()
+  const loader = new GLTFLoader()
 
   return new Promise((resolve, reject) => {
     loader.load(

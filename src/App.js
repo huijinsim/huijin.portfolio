@@ -144,52 +144,6 @@ export class App {
     this.controls.update()
   }
 
-  _normalizeWheelDelta(e) {
-    let dy = e.deltaY
-    if (e.deltaMode === 1) dy *= 16
-    else if (e.deltaMode === 2) dy *= 800
-    return dy
-  }
-
-  _applyExploreInputImmediate() {
-    const zoomCfg = CONFIG.camera.zoom
-    const panCfg = CONFIG.camera.pan
-    this.zoomSmooth = THREE.MathUtils.lerp(this.zoomSmooth, zoomCfg.value, 0.42)
-    this.panSmooth = THREE.MathUtils.lerp(this.panSmooth, panCfg.value, 0.42)
-    this._applyExploreCamera()
-  }
-
-  _handleWheelZoomPan(e) {
-    if (!this.mainActive || this.pageOverlay?.isOpen || this._focusedTree || this._cameraTween) return
-
-    e.preventDefault()
-    e.stopPropagation()
-
-    const panCfg = CONFIG.camera.pan
-    const zoomCfg = CONFIG.camera.zoom
-    const deltaY = this._normalizeWheelDelta(e)
-    const deltaX = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX
-    const wantsZoom = e.ctrlKey || Math.abs(deltaY) >= Math.abs(deltaX) * 0.65
-
-    if (wantsZoom && Math.abs(deltaY) > 0.01) {
-      zoomCfg.value = THREE.MathUtils.clamp(
-        zoomCfg.value - deltaY * zoomCfg.speed,
-        zoomCfg.min,
-        zoomCfg.max,
-      )
-    } else if (Math.abs(deltaX) > 0.01) {
-      panCfg.value = THREE.MathUtils.clamp(
-        panCfg.value - deltaX * panCfg.wheelSpeed,
-        panCfg.min,
-        panCfg.max,
-      )
-    } else {
-      return
-    }
-
-    this._applyExploreInputImmediate()
-  }
-
   _applyExploreCamera() {
     const cam = this.renderer.camera
     const zoomCfg = CONFIG.camera.zoom
@@ -289,14 +243,14 @@ export class App {
   }
 
   _updateKeyboardCamera(delta) {
-    if (this._cameraTween || this._focusedTree || !this.mainActive) return
+    if (!this.controls?.enabled || this._cameraTween || this._focusedTree) return
 
     const panCfg = CONFIG.camera.pan
     const zoomCfg = CONFIG.camera.zoom
     const panSpeed = CONFIG.camera.keyboard?.panSpeed ?? panCfg.keySpeed
     const zoomSpeed = zoomCfg.keySpeed ?? 0.85
 
-    if (this.controls?.enabled && this._keyState.size) {
+    if (this._keyState.size) {
       if (this._keyState.has('ArrowLeft')) {
         panCfg.value = THREE.MathUtils.clamp(panCfg.value - panSpeed * delta, panCfg.min, panCfg.max)
       }
@@ -464,10 +418,29 @@ export class App {
     this.container.addEventListener('pointerdown', this._onPointerDown)
     this.container.addEventListener('pointerup', this._onPointerUp)
 
-    this._onWheel = (e) => this._handleWheelZoomPan(e)
-    const wheelOpts = { passive: false, capture: true }
-    window.addEventListener('wheel', this._onWheel, wheelOpts)
-    this.renderer.instance.domElement.addEventListener('wheel', this._onWheel, wheelOpts)
+    this._onWheel = (e) => {
+      if (!this.mainActive || this.pageOverlay?.isOpen || this._focusedTree || this._cameraTween) return
+
+      const panCfg = CONFIG.camera.pan
+      const zoomCfg = CONFIG.camera.zoom
+      e.preventDefault()
+
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        panCfg.value = THREE.MathUtils.clamp(
+          panCfg.value - e.deltaX * panCfg.wheelSpeed,
+          panCfg.min,
+          panCfg.max,
+        )
+        return
+      }
+
+      zoomCfg.value = THREE.MathUtils.clamp(
+        zoomCfg.value - e.deltaY * zoomCfg.speed,
+        zoomCfg.min,
+        zoomCfg.max,
+      )
+    }
+    this.container.addEventListener('wheel', this._onWheel, { passive: false })
 
     this._onKeyDown = (e) => {
       if (!this.mainActive || this.pageOverlay?.isOpen) return
@@ -597,8 +570,7 @@ export class App {
     window.removeEventListener('blur', this._onBlur)
     this.container.removeEventListener('pointerdown', this._onPointerDown)
     this.container.removeEventListener('pointerup', this._onPointerUp)
-    window.removeEventListener('wheel', this._onWheel, true)
-    this.renderer.instance.domElement.removeEventListener('wheel', this._onWheel, true)
+    this.container.removeEventListener('wheel', this._onWheel)
     this._resizeObserver?.disconnect()
     this.controls?.dispose()
     this.pageOverlay?.dispose()

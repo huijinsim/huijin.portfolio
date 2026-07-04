@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createGLTFLoader } from '../core/gltfLoader.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { CONFIG, PALETTE } from '../config.js'
 
 // ─────────────────────────────────────────────────────────────
@@ -239,7 +239,7 @@ export function createMeshHeightSampler(mesh) {
  */
 export function loadTerrain(url, options = {}, onProgress) {
   const cfg = { ...CONFIG.forest.terrain, ...options }
-  const loader = createGLTFLoader()
+  const loader = new GLTFLoader()
 
   return new Promise((resolve, reject) => {
     loader.load(

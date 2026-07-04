@@ -65,8 +65,8 @@ function estimateTrunkRadius(pos, minY, span, trunkRadiusRatio) {
   return THREE.MathUtils.clamp(radii[idx] * 1.1, span * 0.02, cap)
 }
 
-/** splitMode: tree | stem | foliage(전부 잎) */
-function bakePlantPartMask(geometry, { trunkRatio, trunkRadiusRatio, splitMode }) {
+/** splitMode: tree | stem | foliage(전부 잎) | flower(줄기·잎·꽃) */
+function bakePlantPartMask(geometry, { trunkRatio, trunkRadiusRatio, splitMode, flowerTopRatio }) {
   const pos = geometry.attributes.position
   const count = pos.count
   const minY = geometry.boundingBox.min.y
@@ -79,6 +79,10 @@ function bakePlantPartMask(geometry, { trunkRatio, trunkRadiusRatio, splitMode }
     mask.fill(1)
     geometry.setAttribute('aPlantPart', new THREE.BufferAttribute(mask, 1))
     return { trunkTop: minY, trunkR: 0 }
+  }
+
+  if (splitMode === 'flower') {
+    return {}
   }
 
   const trunkTop =
@@ -100,12 +104,158 @@ function bakePlantPartMask(geometry, { trunkRatio, trunkRadiusRatio, splitMode }
   return { trunkTop, trunkR }
 }
 
-/** 정점 컬러로 기둥/잎색 고정 — InstancedMesh에서도 확실히 보임 */
-function bakeVertexColors(geometry, foliageColor, trunkColor) {
+/** GLB 베이스컬러 텍스처 — 노란 꽃 / 초록 잎 UV 구분 */
+function getTexturePixelData(texture) {
+  const image = texture?.image
+  if (!image?.width || !image?.height) return null
+
+  const w = image.width
+  const h = image.height
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(image, 0, 0, w, h)
+  return { data: ctx.getImageData(0, 0, w, h).data, width: w, height: h }
+}
+
+/** 텍스처 색 — 노란·크림 꽃 패치 (초록 잎 제외) */
+function isFlowerTexel(r, g, b) {
+  const rn = r / 255
+  const gn = g / 255
+  const bn = b / 255
+  const max = Math.max(rn, gn, bn)
+  const min = Math.min(rn, gn, bn)
+  if (max - min < 0.06) return false
+  if (gn > 0.28 && gn > rn * 1.12 && gn > bn * 1.12) return false
+  if (rn > 0.38 && gn > 0.32 && bn < 0.52 && rn + gn > bn * 2.2) return true
+  return false
+}
+
+function buildFlowerTexGrid(pixelData, gridSize = 512) {
+  const { data, width, height } = pixelData
+  const grid = new Uint8Array(gridSize * gridSize)
+  for (let gy = 0; gy < gridSize; gy++) {
+    for (let gx = 0; gx < gridSize; gx++) {
+      const px = Math.floor((gx / gridSize) * (width - 1))
+      const py = Math.floor((1 - gy / gridSize) * (height - 1))
+      const i = (py * width + px) * 4
+      grid[gy * gridSize + gx] = isFlowerTexel(data[i], data[i + 1], data[i + 2]) ? 1 : 0
+    }
+  }
+  return grid
+}
+
+function sampleFlowerGrid(grid, gridSize, u, v) {
+  const gx = Math.min(gridSize - 1, Math.max(0, Math.floor(u * gridSize)))
+  const gy = Math.min(gridSize - 1, Math.max(0, Math.floor((1 - v) * gridSize)))
+  return grid[gy * gridSize + gx] === 1
+}
+
+/** 꽃=텍스처 UV 노란 패치, 잎=초록 — 정수리 높이 슬라이스 사용 안 함 */
+function bakeFlowerMaskFromTexture(geometry, texture, { trunkRatio }) {
+  const uv = geometry.attributes.uv
+  const pixelData = getTexturePixelData(texture)
+  if (!uv || !pixelData) return false
+
+  const pos = geometry.attributes.position
+  const count = pos.count
+  const minY = geometry.boundingBox.min.y
+  const span = Math.max(geometry.boundingBox.max.y - minY, 0.001)
+  const trunkTop = minY + span * trunkRatio
+  const grid = buildFlowerTexGrid(pixelData)
+  const gridSize = 512
+  const mask = new Float32Array(count)
+
+  for (let i = 0; i < count; i++) {
+    const y = pos.getY(i)
+    if (y <= trunkTop) {
+      mask[i] = 0
+      continue
+    }
+    mask[i] = sampleFlowerGrid(grid, gridSize, uv.getX(i), uv.getY(i)) ? 1 : 0.25
+  }
+
+  geometry.setAttribute('aPlantPart', new THREE.BufferAttribute(mask, 1))
+  return true
+}
+
+/** 꽃=로컬 돔 꼭짓점, 잎=그 아래 — 텍스처 없을 때 폴백 */
+function bakeFlowerClusterMask(geometry, { trunkRatio, flowerBumpRatio, cellScale }) {
+  const pos = geometry.attributes.position
+  const count = pos.count
+  const minY = geometry.boundingBox.min.y
+  const maxY = geometry.boundingBox.max.y
+  const span = Math.max(maxY - minY, 0.001)
+  const trunkTop = minY + span * trunkRatio
+  const cell = Math.max(span * cellScale, 0.04)
+
+  const grid = new Map()
+  for (let i = 0; i < count; i++) {
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const z = pos.getZ(i)
+    const key = `${Math.floor(x / cell)},${Math.floor(z / cell)}`
+    let bucket = grid.get(key)
+    if (!bucket) {
+      bucket = { minY: y, maxY: y, idx: [] }
+      grid.set(key, bucket)
+    }
+    bucket.minY = Math.min(bucket.minY, y)
+    bucket.maxY = Math.max(bucket.maxY, y)
+    bucket.idx.push(i)
+  }
+
+  const mask = new Float32Array(count)
+  const cellKey = (cx, cz) => `${cx},${cz}`
+
+  for (let i = 0; i < count; i++) {
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const z = pos.getZ(i)
+    if (y <= trunkTop) {
+      mask[i] = 0
+      continue
+    }
+
+    const cx = Math.floor(x / cell)
+    const cz = Math.floor(z / cell)
+    let nhMin = Infinity
+    let nhMax = -Infinity
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const bucket = grid.get(cellKey(cx + dx, cz + dz))
+        if (!bucket) continue
+        nhMin = Math.min(nhMin, bucket.minY)
+        nhMax = Math.max(nhMax, bucket.maxY)
+      }
+    }
+    if (!Number.isFinite(nhMin)) {
+      mask[i] = 0.25
+      continue
+    }
+
+    const t = (y - nhMin) / Math.max(nhMax - nhMin, 0.001)
+    mask[i] = t >= flowerBumpRatio ? 1 : 0.25
+  }
+
+  geometry.setAttribute('aPlantPart', new THREE.BufferAttribute(mask, 1))
+}
+
+/** 정점 컬러 — flower 모드: 0 기둥 / 0.25 잎 / 1 꽃 */
+function bakeVertexColors(geometry, foliageColor, trunkColor, flowerColor = null) {
   const part = geometry.attributes.aPlantPart.array
   const colors = new Float32Array(part.length * 3)
+  const flowerBase = flowerColor ?? new THREE.Color(1, 1, 1)
   for (let i = 0; i < part.length; i++) {
-    const c = part[i] > 0.5 ? foliageColor : trunkColor
+    let c = foliageColor
+    if (flowerColor != null) {
+      if (part[i] < 0.12) c = trunkColor
+      else if (part[i] < 0.88) c = foliageColor
+      else c = flowerBase
+    } else {
+      c = part[i] > 0.5 ? foliageColor : trunkColor
+    }
     colors[i * 3] = c.r
     colors[i * 3 + 1] = c.g
     colors[i * 3 + 2] = c.b
@@ -154,44 +304,67 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
             geometry.boundingBox.max.z - geometry.boundingBox.min.z,
           ) * 0.5
 
-        if (materialCfg.preserveOriginal) {
-          const srcMat = Array.isArray(src.material) ? src.material[0] : src.material
-          const material = srcMat?.clone?.() ?? new THREE.MeshStandardMaterial({ color: 0xffffff })
-          material.roughness = materialCfg.roughness ?? material.roughness ?? 0.9
-          material.metalness = 0
-
-          resolve({
-            geometry,
-            material,
-            height,
-            radius,
-            id: options.id ?? url,
-            trunkPalette,
-            trunkColor,
-            foliagePalette: null,
-            randomFoliage: false,
-          })
-          return
-        }
-
         const trunkRatio = materialCfg.trunkRatio ?? 0.1
         const trunkRadiusRatio = materialCfg.trunkRadiusRatio ?? 0.052
         const splitMode = materialCfg.splitMode ?? 'tree'
+        const flowerTexture = splitMode === 'flower' ? src.material?.map : null
         bakePlantPartMask(geometry, {
           trunkRatio,
           trunkRadiusRatio,
           splitMode,
+          flowerTopRatio: materialCfg.flowerTopRatio,
         })
+        if (splitMode === 'flower') {
+          const ok = flowerTexture && bakeFlowerMaskFromTexture(geometry, flowerTexture, { trunkRatio })
+          if (!ok) {
+            bakeFlowerClusterMask(geometry, {
+              trunkRatio,
+              flowerBumpRatio: materialCfg.flowerTopRatio ?? 0.72,
+              cellScale: 0.11,
+            })
+          }
+        }
 
+        const flowerPalette = (
+          materialCfg.flowerPalette?.length
+            ? materialCfg.flowerPalette
+            : CONFIG.forest.flowerPalette
+        )?.length
+          ? paletteColors(
+              materialCfg.flowerPalette?.length
+                ? materialCfg.flowerPalette
+                : CONFIG.forest.flowerPalette,
+              foliageColor.getStyle(),
+            )
+          : null
         const foliagePalette = materialCfg.foliagePalette?.length
           ? paletteColors(materialCfg.foliagePalette, foliageColor.getStyle())
           : null
-        const randomFoliage = !!(materialCfg.randomFoliage && foliagePalette?.length)
-        bakeVertexColors(
-          geometry,
-          randomFoliage ? new THREE.Color(1, 1, 1) : foliageColor,
-          trunkColor,
+        const randomFlowers = !!(
+          splitMode === 'flower' &&
+          (materialCfg.randomFlowers ?? materialCfg.randomFoliage) &&
+          (flowerPalette?.length || foliagePalette?.length)
         )
+        const randomFoliage = !!(
+          splitMode !== 'flower' &&
+          materialCfg.randomFoliage &&
+          foliagePalette?.length
+        )
+        const instancePalette = randomFlowers
+          ? flowerPalette ?? foliagePalette
+          : foliagePalette
+
+        if (randomFlowers) {
+          bakeVertexColors(geometry, foliageColor, trunkColor, new THREE.Color(1, 1, 1))
+        } else {
+          bakeVertexColors(
+            geometry,
+            randomFoliage ? new THREE.Color(1, 1, 1) : foliageColor,
+            trunkColor,
+          )
+        }
+
+        const useFlowerTint = splitMode === 'flower'
 
         const material = new THREE.MeshStandardMaterial({
           color: 0xffffff,
@@ -211,15 +384,18 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
               '#include <begin_vertex>',
               '#include <begin_vertex>\n  vPlantPart = aPlantPart;',
             )
-            .replace(
+
+          if (useFlowerTint) {
+            shader.vertexShader = shader.vertexShader.replace(
               '#include <color_vertex>',
               `#include <color_vertex>
 #if defined USE_INSTANCING_COLOR && defined USE_COLOR
-  if (aPlantPart < 0.5) {
+  if (aPlantPart < 0.88) {
     vColor.rgb = color.rgb;
   }
 #endif`,
             )
+          }
 
           shader.fragmentShader = shader.fragmentShader
             .replace(
@@ -228,13 +404,19 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
             )
             .replace(
               '#include <emissivemap_fragment>',
-              `#include <emissivemap_fragment>
+              useFlowerTint
+                ? `#include <emissivemap_fragment>
+  float trunkW = vPlantPart < 0.12 ? 1.0 : 0.0;
+  totalEmissiveRadiance += diffuseColor.rgb * trunkW * 0.05;`
+                : `#include <emissivemap_fragment>
   float trunkW = 1.0 - vPlantPart;
-  totalEmissiveRadiance += diffuseColor.rgb * trunkW * 0.14;`,
+  totalEmissiveRadiance += diffuseColor.rgb * trunkW * 0.92;`,
             )
         }
-        material.customProgramCacheKey = () =>
-          `plant-v9-trunk-${splitMode}-${materialCfg.foliage}-${trunkColor.getHexString()}-${randomFoliage ? 'rand' : 'fix'}`
+        material.customProgramCacheKey = () => {
+          const fp = materialCfg.flowerPalette ?? CONFIG.forest.flowerPalette ?? []
+          return `plant-v14-${useFlowerTint ? 'flower' : 'tree'}-${splitMode}-${fp.join('')}-${materialCfg.foliage}-${trunkColor.getHexString()}-${randomFoliage || randomFlowers ? 'rand' : 'fix'}`
+        }
 
         resolve({
           geometry,
@@ -244,8 +426,9 @@ export function loadTreeTemplate(url, options = {}, onProgress) {
           id: options.id ?? url,
           trunkPalette,
           trunkColor,
-          foliagePalette,
+          foliagePalette: instancePalette,
           randomFoliage,
+          randomFlowers,
         })
       },
       (ev) => {
@@ -295,7 +478,7 @@ export function createTreeInstances(template, placements, options = {}) {
     mesh.setMatrixAt(i, m)
   }
 
-  if (template.randomFoliage && template.foliagePalette?.length) {
+  if ((template.randomFoliage || template.randomFlowers) && template.foliagePalette?.length) {
     const palette = template.foliagePalette
     const colors = new Float32Array(placements.length * 3)
     for (let i = 0; i < placements.length; i++) {

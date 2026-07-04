@@ -45,7 +45,7 @@ export class TimeSlider {
         }
         #time-slider input[type=range]::-webkit-slider-runnable-track {
           height: 4px; border-radius: 4px;
-          background: linear-gradient(90deg, #b8d4e8 0%, #ede4a8 25%, #e4b0c0 50%, #b4a4c8 75%, #586078 100%);
+          background: linear-gradient(90deg, #b8d4e8 0%, #ede4a8 50%, #b8d4e8 100%);
         }
         #time-slider input[type=range]::-webkit-slider-thumb {
           -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px;
@@ -58,8 +58,6 @@ export class TimeSlider {
         }
         #time-slider .ticks span:nth-child(1)::after { content: ' · 하늘'; }
         #time-slider .ticks span:nth-child(2)::after { content: ' · 노랑'; }
-        #time-slider .ticks span:nth-child(3)::after { content: ' · 핑크'; }
-        #time-slider .ticks span:nth-child(4)::after { content: ' · 남색'; }
       </style>
       <div class="head">
         <span>시간</span>
@@ -67,7 +65,7 @@ export class TimeSlider {
       </div>
       <input type="range" min="0" max="1000" value="0" step="1" aria-label="하루 시간">
       <div class="ticks">
-        <span>아침</span><span>점심</span><span>저녁</span><span>밤</span>
+        <span>아침</span><span>점심</span>
       </div>
     `
 

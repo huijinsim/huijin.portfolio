@@ -3,7 +3,7 @@ import { CONFIG } from '../config.js'
 import { SkyBackground } from './SkyBackground.js'
 
 // ─────────────────────────────────────────────────────────────
-// DayCycle — 슬라이더 색 → 배경 + 숲 조명·그림자·포스트 무드
+// DayCycle — 아침 ↔ 점심 순환 (밤·핑크 없음, t=0≡t=1 매끈한 루프)
 // ─────────────────────────────────────────────────────────────
 
 const _a = new THREE.Color()
@@ -14,102 +14,66 @@ function lerpHex(hexA, hexB, t) {
   return _out.copy(_a.set(hexA)).lerp(_b.set(hexB), t).getHexString()
 }
 
-function sampleTrack(keyframes, t, fields) {
-  let i = 0
-  while (i < keyframes.length - 2 && keyframes[i + 1].t <= t) i += 1
-  const left = keyframes[i]
-  const right = keyframes[i + 1]
-  const local = THREE.MathUtils.clamp((t - left.t) / (right.t - left.t || 1), 0, 1)
-  const result = {}
-  for (const f of fields) {
-    result[f] = lerpHex(left[f], right[f], local)
-  }
-  return result
+/** t∈[0,1] — 0·1=아침, 0.5=점심, 코사인으로 끊김 없이 순환 */
+function cyclePhase(t) {
+  return (1 - Math.cos(t * Math.PI * 2)) * 0.5
 }
 
-function sampleNumberTrack(keyframes, t, field) {
-  let i = 0
-  while (i < keyframes.length - 2 && keyframes[i + 1].t <= t) i += 1
-  const left = keyframes[i]
-  const right = keyframes[i + 1]
-  const local = THREE.MathUtils.clamp((t - left.t) / (right.t - left.t || 1), 0, 1)
-  return THREE.MathUtils.lerp(left[field], right[field], local)
+const SKY_MORNING = {
+  top: '#72c8f4',
+  bottom: '#89d8fa',
+  horizon: '#a0e4fc',
+  sunset: '#68c0ec',
+}
+const SKY_NOON = {
+  top: '#74c8f2',
+  bottom: '#98d8f8',
+  horizon: '#b8e8fc',
+  sunset: '#78c4ea',
 }
 
-/** 배경 하늘 — 은은한 파스텔, 시간대별로 살짝만 변화 */
-function pastelizeSkyHex(hex, t) {
+const LIGHT_MORNING = { color: '#e8f4ff', ambient: 0.62, sun: 0.78 }
+const LIGHT_NOON = { color: '#fff8e8', ambient: 1.1, sun: 1.52 }
+
+/** 배경 하늘 — 은은한 파스텔 */
+function pastelizeSkyHex(hex) {
   _a.set(hex.startsWith('#') ? hex : `#${hex}`)
   const hsl = { h: 0, s: 0, l: 0 }
   _a.getHSL(hsl)
-  const nightT = THREE.MathUtils.smoothstep(0.55, 1, t)
-
-  if (nightT > 0.35) {
-    hsl.s = Math.min(hsl.s * 0.78, 0.38)
-    hsl.l = THREE.MathUtils.clamp(hsl.l, 0.14, 0.36)
-    return _a.setHSL(hsl.h, hsl.s, hsl.l).getHexString()
-  }
-
-  if (hsl.h > 0.48 && hsl.h < 0.68) {
-    hsl.s = Math.min(hsl.s * 1.02, 0.68)
-    hsl.l = THREE.MathUtils.clamp(hsl.l, 0.56, 0.8)
-    return _a.setHSL(hsl.h, hsl.s, hsl.l).getHexString()
-  }
-
-  hsl.s = Math.min(hsl.s * 0.8, 0.46)
-  hsl.l = THREE.MathUtils.clamp(hsl.l * 0.98 + 0.02, 0.5, 0.86)
+  hsl.s = Math.min(hsl.s * 0.82, 0.5)
+  hsl.l = THREE.MathUtils.clamp(hsl.l * 0.98 + 0.02, 0.52, 0.86)
   return _a.setHSL(hsl.h, hsl.s, hsl.l).getHexString()
 }
 
-const SKY_TRACK = [
-  { t: 0.0, top: '#72c8f4', bottom: '#89d8fa', horizon: '#a0e4fc', sunset: '#68c0ec' },
-  { t: 0.25, top: '#74c8f2', bottom: '#98d8f8', horizon: '#b8e8fc', sunset: '#78c4ea' },
-  { t: 0.5, top: '#6ec4f0', bottom: '#a4dcf6', horizon: '#c8ecfa', sunset: '#70c0e8' },
-  { t: 0.75, top: '#a8b0c8', bottom: '#c8b8b0', horizon: '#dcc8c0', sunset: '#c0a8a0' },
-  { t: 1.0, top: '#3d4540', bottom: '#4a5048', horizon: '#5a6058', sunset: '#484e48' },
-]
-
-const LIGHT_TRACK = [
-  { t: 0.0, color: '#e8f4ff', ambient: 0.62, sun: 0.78 },
-  { t: 0.25, color: '#fff8e8', ambient: 1.02, sun: 1.42 },
-  { t: 0.5, color: '#ffffff', ambient: 1.1, sun: 1.52 },
-  { t: 0.75, color: '#ffe8d8', ambient: 0.72, sun: 1.02 },
-  { t: 1.0, color: '#7888a0', ambient: 0.22, sun: 0.18 },
-]
+function sampleSky(t) {
+  const p = cyclePhase(t)
+  const raw = {}
+  for (const key of Object.keys(SKY_MORNING)) {
+    raw[key] = lerpHex(SKY_MORNING[key], SKY_NOON[key], p)
+  }
+  const sky = {}
+  for (const key of Object.keys(raw)) {
+    sky[key] = pastelizeSkyHex(raw[key])
+  }
+  return sky
+}
 
 /** 하늘 색 → 숲 조명·그림자·포스트 무드 */
 function computeForestMood(sky, celestial, t) {
-  const nightT = THREE.MathUtils.smoothstep(0.52, 1, t)
-  const dayT = 1 - nightT
-  const sunArc = Math.sin(t * Math.PI)
-  const golden =
-    Math.exp(-Math.pow((t - 0.28) / 0.11, 2)) * 0.85 +
-    Math.exp(-Math.pow((t - 0.72) / 0.1, 2)) * 0.75
+  const p = cyclePhase(t)
+  const golden = Math.exp(-Math.pow((p - 1) / 0.16, 2)) * 0.72
 
-  const trackLight = sampleTrack(LIGHT_TRACK, t, ['color']).color
-  const sunMix = celestial.isMoon
-    ? 0.16
-    : THREE.MathUtils.clamp(0.28 + sunArc * 0.52 + golden * 0.16, 0.22, 0.78)
-  const lightColor = `#${lerpHex(trackLight, lerpHex(sky.horizon, sky.sunset, sunMix), 0.34)}`
-  const ambientColor = `#${lerpHex(sky.horizon, sky.bottom, 0.44 + nightT * 0.16)}`
-  const bounceColor = `#${lerpHex(
-    lerpHex('#6ea14a', sky.bottom, 0.22),
-    '#283018',
-    nightT * 0.62,
-  )}`
+  const trackLight = `#${lerpHex(LIGHT_MORNING.color, LIGHT_NOON.color, p)}`
+  const sunMix = THREE.MathUtils.clamp(0.32 + p * 0.38 + golden * 0.12, 0.28, 0.72)
+  const lightColor = `#${lerpHex(trackLight.slice(1), lerpHex(sky.horizon, sky.sunset, sunMix), 0.34)}`
+  const ambientColor = `#${lerpHex(sky.horizon, sky.bottom, 0.44)}`
+  const bounceColor = `#${lerpHex(lerpHex('#6ea14a', sky.bottom, 0.22), '#283018', 0)}`
 
-  const ambient = sampleNumberTrack(LIGHT_TRACK, t, 'ambient')
-  const sunIntensity = sampleNumberTrack(LIGHT_TRACK, t, 'sun')
+  const ambient = THREE.MathUtils.lerp(LIGHT_MORNING.ambient, LIGHT_NOON.ambient, p)
+  const sunIntensity = THREE.MathUtils.lerp(LIGHT_MORNING.sun, LIGHT_NOON.sun, p)
 
-  const shadowTint = `#${lerpHex(
-    lerpHex('#3a5848', sky.sunset, 0.14 + golden * 0.14),
-    '#2a3040',
-    nightT * 0.72,
-  )}`
-  const highlightTint = `#${lerpHex(
-    lerpHex('#f8fcff', sky.horizon, 0.18 + golden * 0.14),
-    '#b8c8d8',
-    nightT * 0.5,
-  )}`
+  const shadowTint = `#${lerpHex(lerpHex('#3a5848', sky.sunset, 0.14 + golden * 0.14), '#2a3040', 0)}`
+  const highlightTint = `#${lerpHex(lerpHex('#f8fcff', sky.horizon, 0.18 + golden * 0.14), '#b8c8d8', 0)}`
   const washColor = `#${lerpHex(sky.horizon, sky.top, 0.36 + golden * 0.08)}`
 
   return {
@@ -118,21 +82,21 @@ function computeForestMood(sky, celestial, t) {
     bounceColor,
     ambient,
     sunIntensity,
-    nightT,
-    dayT,
+    nightT: 0,
+    dayT: 1,
     golden,
     shadowTint,
     highlightTint,
     washColor,
-    saturation: THREE.MathUtils.lerp(0.7, 0.88, dayT) + golden * 0.06,
-    lift: THREE.MathUtils.lerp(0.012, 0.026, dayT) + golden * 0.01,
-    wash: THREE.MathUtils.lerp(0.026, 0.01, dayT) + golden * 0.014,
-    vignette: THREE.MathUtils.lerp(0.016, 0.11, nightT),
-    inkStrength: THREE.MathUtils.lerp(CONFIG.painterly.inkStrength * 0.78, CONFIG.painterly.inkStrength * 1.22, nightT),
-    aoScale: THREE.MathUtils.lerp(CONFIG.quality.aoScale * 1.42, CONFIG.quality.aoScale * 0.64, dayT),
-    bloomStrength: THREE.MathUtils.lerp(0.032, CONFIG.quality.bloomStrength, dayT) + golden * 0.07,
-    bloomThreshold: THREE.MathUtils.lerp(0.72, CONFIG.quality.bloomThreshold, dayT),
-    exposure: THREE.MathUtils.lerp(0.84, 1.1, dayT) + golden * 0.06,
+    saturation: 0.82 + golden * 0.06,
+    lift: 0.02 + golden * 0.01,
+    wash: 0.018 + golden * 0.014,
+    vignette: 0.016,
+    inkStrength: CONFIG.painterly.inkStrength * 0.78,
+    aoScale: CONFIG.quality.aoScale * 1.42,
+    bloomStrength: CONFIG.quality.bloomStrength + golden * 0.07,
+    bloomThreshold: CONFIG.quality.bloomThreshold,
+    exposure: 0.92 + p * 0.18 + golden * 0.06,
   }
 }
 
@@ -146,16 +110,12 @@ export class DayCycle {
   }
 
   sample(t) {
-    const raw = sampleTrack(SKY_TRACK, t, ['top', 'bottom', 'horizon', 'sunset'])
-    const sky = {}
-    for (const key of Object.keys(raw)) {
-      sky[key] = pastelizeSkyHex(raw[key], t)
-    }
-
-    const celestialX = THREE.MathUtils.lerp(-0.92, 0.92, t)
-    const celestialY = Math.sin(t * Math.PI) * 0.58 + 0.22
-    const isMoon = t >= 0.5
-    const celestial = { x: celestialX, y: celestialY, isMoon, t }
+    const sky = sampleSky(t)
+    const angle = t * Math.PI * 2
+    const p = cyclePhase(t)
+    const celestialX = Math.sin(angle) * 0.82
+    const celestialY = p * 0.52 + 0.22
+    const celestial = { x: celestialX, y: celestialY, isMoon: false, t }
     const mood = computeForestMood(sky, celestial, t)
 
     return {
@@ -168,11 +128,9 @@ export class DayCycle {
   }
 
   _label(t) {
-    if (t < 0.18) return '아침'
-    if (t < 0.38) return '오전'
-    if (t < 0.58) return '점심'
-    if (t < 0.78) return '저녁'
-    return '밤'
+    const p = cyclePhase(t)
+    if (p > 0.38 && p < 0.62) return '점심'
+    return '아침'
   }
 
   setTime(t) {
@@ -204,14 +162,15 @@ export class DayCycle {
       forest.scene.background = this.skyBackground.texture
       if (!forest.scene.fog) forest.scene.fog = new THREE.Fog('#a0e4fc', 320, 1200)
       forest.scene.fog.color.set(`#${a.sky.horizon}`)
-      forest.scene.fog.near = THREE.MathUtils.lerp(300, 58, m.nightT)
-      forest.scene.fog.far = THREE.MathUtils.lerp(1420, 360, m.nightT)
+      forest.scene.fog.near = 300
+      forest.scene.fog.far = 1420
     }
 
     if (forest?.sun) {
       forest.sun.color.set(m.lightColor)
       forest.sun.intensity = m.sunIntensity
       const dist = 170
+      const p = cyclePhase(a.t)
       forest.sun.position.set(
         a.celestial.x * dist,
         Math.max(14, (a.celestial.y + 0.1) * dist),
@@ -219,13 +178,13 @@ export class DayCycle {
       )
       forest.sun.target.position.set(0, 0, -30)
       forest.sun.target.updateMatrixWorld()
-      forest.sun.shadow.radius = THREE.MathUtils.lerp(3.8, 9.0, m.dayT)
+      forest.sun.shadow.radius = THREE.MathUtils.lerp(5.5, 9.0, p)
     }
 
     if (forest?.hemi) {
       forest.hemi.color.set(`#${a.sky.top}`)
       forest.hemi.groundColor.set(m.bounceColor)
-      forest.hemi.intensity = THREE.MathUtils.lerp(0.52, 1.02, m.dayT) + m.golden * 0.1
+      forest.hemi.intensity = 0.82 + m.golden * 0.1
     }
 
     if (forest?.ambient) {

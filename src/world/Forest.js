@@ -170,15 +170,38 @@ export class Forest {
   }
 
   /** 디오라마 내 무작위 좌표 (테두리·길 회피) */
-  _pickGroundSpot(rng, pathPad = 1.5) {
+  _pickGroundSpot(rng, pathPad = 1.5, maxTries = 16) {
     const lim = this._half - this._margin - 2
-    for (let t = 0; t < 16; t++) {
+    for (let t = 0; t < maxTries; t++) {
       const x = (rng() * 2 - 1) * lim
       const z = (rng() * 2 - 1) * lim
       if (this._isOnPath(x, z, pathPad)) continue
       return [x, z]
     }
     return null
+  }
+
+  /** 나무 — 지형 전체에 균등 랜덤 (길만 회피) */
+  _pickTreeSpot(rng, pathPad = 2.4, maxTries = 48) {
+    const lim = this._half - this._margin - 2
+
+    for (let t = 0; t < maxTries; t++) {
+      const x = (rng() * 2 - 1) * lim
+      const z = (rng() * 2 - 1) * lim
+      if (this._isOnPath(x, z, pathPad)) continue
+      return [x, z]
+    }
+    return null
+  }
+
+  _canPlaceGroundProp(x, z, radius, spacing, slots) {
+    for (const slot of slots) {
+      const dx = x - slot.x
+      const dz = z - slot.z
+      const minD = (radius + slot.r) * spacing
+      if (dx * dx + dz * dz < minD * minD) return false
+    }
+    return true
   }
 
   /** 지면 높이 — footprint>0 이면 주변 최고점(소품용), 나무는 _treeGroundY 사용 */
@@ -210,17 +233,6 @@ export class Forest {
   _canPlaceTree(x, z, radius) {
     const pad = CONFIG.forest.canopyPadding
     for (const slot of this.treeSlots) {
-      const dx = x - slot.x
-      const dz = z - slot.z
-      const minD = (radius + slot.r) * pad
-      if (dx * dx + dz * dz < minD * minD) return false
-    }
-    return true
-  }
-
-  _canPlaceGroundProp(x, z, radius, pad, extraSlots = []) {
-    const slots = [...this.treeSlots, ...(this.bushSlots ?? []), ...extraSlots]
-    for (const slot of slots) {
       const dx = x - slot.x
       const dz = z - slot.z
       const minD = (radius + slot.r) * pad
@@ -301,11 +313,8 @@ export class Forest {
       const li = queue[qi]
       const cfg = this.treeLayers[li].config
 
-      const spot = this._pickGroundSpot(rng, 2.4)
-      if (!spot) {
-        qi++
-        continue
-      }
+      const spot = this._pickTreeSpot(rng, f.treePathPad ?? 2.4, 48)
+      if (!spot) continue
       const [x, z] = spot
 
       // 언덕(높은 곳)일수록 더 크게, 길가는 작게
@@ -363,32 +372,18 @@ export class Forest {
 
     const rng = this.rng
     const placements = []
-    this.bushSlots = []
-    const pad = cfg.spacing ?? 1.35
-    const radiusScale = cfg.radiusScale ?? 0.85
 
     for (let i = 0; i < cfg.count; i++) {
-      let placed = false
-      for (let attempt = 0; attempt < 28; attempt++) {
-        const spot = this._pickGroundSpot(rng, 0.9)
-        if (!spot) break
-        const [x, z] = spot
-        const scale = cfg.minScale + rng() * (cfg.maxScale - cfg.minScale)
-        const r = this.bushTemplate.radius * scale * radiusScale
-        if (!this._canPlaceGroundProp(x, z, r, pad)) continue
-
-        placements.push({
-          x,
-          z,
-          scale,
-          rotY: rng() * Math.PI * 2,
-          y: this._groundY(x, z, cfg.groundSink ?? -0.04),
-        })
-        this.bushSlots.push({ x, z, r })
-        placed = true
-        break
-      }
-      if (!placed) continue
+      const spot = this._pickGroundSpot(rng, 0.9)
+      if (!spot) continue
+      const [x, z] = spot
+      placements.push({
+        x,
+        z,
+        scale: cfg.minScale + rng() * (cfg.maxScale - cfg.minScale),
+        rotY: rng() * Math.PI * 2,
+        y: this._groundY(x, z, cfg.groundSink ?? -0.04),
+      })
     }
 
     if (!placements.length) return
@@ -402,6 +397,7 @@ export class Forest {
     if (!this.flowerLayers?.length) return
 
     const rng = this.rng
+    const propSlots = []
     let li = 0
 
     while (li < this.flowerLayers.length) {
@@ -409,85 +405,90 @@ export class Forest {
       const cfg = layer.config
       const altLayer = cfg.alternate ? this.flowerLayers[li + 1] : null
 
-      if (altLayer?.template && layer.template) {
+      if (altLayer?.template && layer.template && cfg.count) {
+        const pad = cfg.pathPad ?? 0.9
+        const spacing = cfg.spacing ?? 1.5
+        const radiusScale = cfg.radiusScale ?? 0.52
         const placementsA = []
         const placementsB = []
-        const flowerSlots = []
-        const pathPad = cfg.pathPad ?? 1.1
+        let guard = 0
+        const guardMax = cfg.count * 90
 
-        for (let i = 0; i < (cfg.count ?? 0); i++) {
-          let placed = false
-          for (let attempt = 0; attempt < 22; attempt++) {
-            const spot = this._pickGroundSpot(rng, pathPad)
-            if (!spot) break
-            const [x, z] = spot
-            const scale = cfg.minScale + rng() * (cfg.maxScale - cfg.minScale)
-            const useA = (placementsA.length + placementsB.length) % 2 === 0
-            const template = useA ? layer.template : altLayer.template
-            const r = template.radius * scale * (cfg.radiusScale ?? 0.52)
-            if (!this._canPlaceGroundProp(x, z, r, cfg.spacing ?? 1.18, flowerSlots)) continue
+        while (placementsA.length + placementsB.length < cfg.count && guard < guardMax) {
+          guard++
+          const spot = this._pickGroundSpot(rng, pad, 28)
+          if (!spot) continue
+          const [x, z] = spot
+          const scale = cfg.minScale + rng() * (cfg.maxScale - cfg.minScale)
+          const r = layer.template.radius * scale * radiusScale
+          if (!this._canPlaceGroundProp(x, z, r, spacing, propSlots)) continue
 
-            const placement = {
-              x,
-              z,
-              scale,
-              rotY: rng() * Math.PI * 2,
-              y: this._groundY(x, z, cfg.groundSink ?? -0.02),
-            }
-            if (useA) placementsA.push(placement)
-            else placementsB.push(placement)
-            flowerSlots.push({ x, z, r })
-            placed = true
-            break
+          propSlots.push({ x, z, r })
+          const placement = {
+            x,
+            z,
+            scale,
+            rotY: rng() * Math.PI * 2,
+            y: this._groundY(x, z, cfg.groundSink ?? -0.04),
+            seed: placementsA.length + placementsB.length,
           }
-          if (!placed) continue
+          if ((placementsA.length + placementsB.length) % 2 === 0) placementsA.push(placement)
+          else placementsB.push(placement)
         }
 
-        for (const [alt, placements] of [
-          [layer, placementsA],
-          [altLayer, placementsB],
-        ]) {
-          if (!placements.length) continue
-          const mesh = createTreeInstances(alt.template, placements)
-          mesh.userData.interactive = null
-          mesh.userData.isInstancedTrees = false
-          this._track(mesh.material)
-          this.scene.add(mesh)
+        if (placementsA.length) {
+          const meshA = createTreeInstances(layer.template, placementsA)
+          meshA.userData.interactive = null
+          this._track(meshA.material)
+          this.scene.add(meshA)
         }
-
+        if (placementsB.length) {
+          const meshB = createTreeInstances(altLayer.template, placementsB)
+          meshB.userData.interactive = null
+          this._track(meshB.material)
+          this.scene.add(meshB)
+        }
         li += 2
         continue
       }
 
       if (!layer.template || !cfg.count) {
-        li++
+        li += 1
         continue
       }
 
+      const spacing = cfg.spacing ?? 1.4
+      const radiusScale = cfg.radiusScale ?? 0.5
       const placements = []
-      const pathPad = cfg.pathPad ?? 1.1
-      for (let i = 0; i < cfg.count; i++) {
-        const spot = this._pickGroundSpot(rng, pathPad)
+      let guard = 0
+      const guardMax = cfg.count * 90
+
+      while (placements.length < cfg.count && guard < guardMax) {
+        guard++
+        const spot = this._pickGroundSpot(rng, cfg.pathPad ?? 1.1, 28)
         if (!spot) continue
         const [x, z] = spot
+        const scale = cfg.minScale + rng() * (cfg.maxScale - cfg.minScale)
+        const r = layer.template.radius * scale * radiusScale
+        if (!this._canPlaceGroundProp(x, z, r, spacing, propSlots)) continue
+        propSlots.push({ x, z, r })
         placements.push({
           x,
           z,
-          scale: cfg.minScale + rng() * (cfg.maxScale - cfg.minScale),
+          scale,
           rotY: rng() * Math.PI * 2,
           y: this._groundY(x, z, cfg.groundSink ?? -0.02),
+          seed: propSlots.length,
         })
       }
 
       if (placements.length) {
         const mesh = createTreeInstances(layer.template, placements)
         mesh.userData.interactive = null
-        mesh.userData.isInstancedTrees = false
         this._track(mesh.material)
         this.scene.add(mesh)
       }
-
-      li++
+      li += 1
     }
   }
 

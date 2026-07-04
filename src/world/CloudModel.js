@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createGLTFLoader } from '../core/gltfLoader.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { CONFIG } from '../config.js'
 
 // ─────────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ import { CONFIG } from '../config.js'
 // ─────────────────────────────────────────────────────────────
 
 export function loadCloudTemplate(url, options = {}, onProgress) {
-  const loader = createGLTFLoader()
+  const loader = new GLTFLoader()
   const target = options.size ?? 16
 
   return new Promise((resolve, reject) => {
